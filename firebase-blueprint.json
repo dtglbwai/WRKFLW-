@@ -1,0 +1,164 @@
+{
+  "entities": {
+    "Tenant": {
+      "title": "Tenant",
+      "description": "Multi-tenant SaaS automotive workshop organization and subscription entitlement record.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 120 },
+        "city": { "type": "string", "maxLength": 80 },
+        "gstin": { "type": "string", "maxLength": 20 },
+        "planId": { "type": "string", "enum": ["starter", "pro", "enterprise"] },
+        "ownerUid": { "type": "string", "maxLength": 128 },
+        "ownerEmail": { "type": "string", "format": "email", "maxLength": 120 },
+        "ownershipCode": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "city", "planId", "ownerUid", "ownerEmail", "ownershipCode", "createdAt"]
+    },
+    "TenantMember": {
+      "title": "TenantMember",
+      "description": "RBAC membership mapping a user UID to a specific SaaS tenant role.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "format": "email", "maxLength": 120 },
+        "displayName": { "type": "string", "maxLength": 100 },
+        "role": { "type": "string", "enum": ["Platform Owner", "Workshop Admin", "Service Advisor", "Master Technician", "Inventory Manager", "Billing Accountant"] },
+        "status": { "type": "string", "enum": ["Active", "Suspended"] },
+        "assignedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "status", "assignedAt"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Tenant-isolated vehicle owners and fleet accounts.",
+      "type": "object",
+      "properties": {
+        "tenantId": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 120 },
+        "phone": { "type": "string", "maxLength": 30 },
+        "email": { "type": "string", "format": "email", "maxLength": 120 },
+        "address": { "type": "string", "maxLength": 240 },
+        "customerType": { "type": "string", "enum": ["Individual", "Fleet"] },
+        "createdAt": { "type": "string", "maxLength": 32 }
+      },
+      "required": ["tenantId", "name", "phone", "email", "customerType"]
+    },
+    "Vehicle": {
+      "title": "Vehicle",
+      "description": "Registered customer and fleet vehicles indexed by RTO plate and VIN.",
+      "type": "object",
+      "properties": {
+        "tenantId": { "type": "string", "maxLength": 128 },
+        "customerId": { "type": "string", "maxLength": 128 },
+        "plateNumber": { "type": "string", "maxLength": 24 },
+        "vin": { "type": "string", "maxLength": 24 },
+        "make": { "type": "string", "maxLength": 60 },
+        "model": { "type": "string", "maxLength": 80 },
+        "year": { "type": "number" },
+        "odometerKm": { "type": "number" }
+      },
+      "required": ["tenantId", "customerId", "plateNumber", "make", "model", "year"]
+    },
+    "JobCard": {
+      "title": "JobCard",
+      "description": "Tenant-isolated workshop repair orders, labor, parts, and GST billing.",
+      "type": "object",
+      "properties": {
+        "tenantId": { "type": "string", "maxLength": 128 },
+        "jobNumber": { "type": "string", "maxLength": 32 },
+        "vehicleId": { "type": "string", "maxLength": 128 },
+        "customerId": { "type": "string", "maxLength": 128 },
+        "bayId": { "type": "string", "maxLength": 128 },
+        "technicianId": { "type": "string", "maxLength": 128 },
+        "status": {
+          "type": "string",
+          "enum": ["Intake", "Diagnostics", "Awaiting Parts", "In Repair", "Quality Check", "Ready for Pickup", "Invoiced"]
+        },
+        "priority": { "type": "string", "enum": ["Standard", "Priority", "Urgent"] },
+        "paymentStatus": { "type": "string", "enum": ["Estimate", "Unpaid", "Partial", "Paid"] }
+      },
+      "required": ["tenantId", "jobNumber", "vehicleId", "customerId", "status"]
+    },
+    "PartItem": {
+      "title": "PartItem",
+      "description": "Tenant spare parts and consumables inventory.",
+      "type": "object",
+      "properties": {
+        "tenantId": { "type": "string", "maxLength": 128 },
+        "sku": { "type": "string", "maxLength": 40 },
+        "name": { "type": "string", "maxLength": 140 },
+        "category": { "type": "string", "maxLength": 80 },
+        "quantity": { "type": "number" },
+        "reorderLevel": { "type": "number" },
+        "sellingPrice": { "type": "number" }
+      },
+      "required": ["tenantId", "sku", "name", "quantity", "sellingPrice"]
+    },
+    "Appointment": {
+      "title": "Appointment",
+      "description": "Scheduled garage drop-offs and bay bookings.",
+      "type": "object",
+      "properties": {
+        "tenantId": { "type": "string", "maxLength": 128 },
+        "appointmentNumber": { "type": "string", "maxLength": 32 },
+        "customerName": { "type": "string", "maxLength": 120 },
+        "plateNumber": { "type": "string", "maxLength": 24 },
+        "scheduledDate": { "type": "string", "format": "date" },
+        "status": { "type": "string", "enum": ["Scheduled", "Checked In", "Completed", "Cancelled"] }
+      },
+      "required": ["tenantId", "appointmentNumber", "customerName", "plateNumber", "scheduledDate", "status"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable SaaS security and workflow audit trail.",
+      "type": "object",
+      "properties": {
+        "tenantId": { "type": "string", "maxLength": 128 },
+        "actorUid": { "type": "string", "maxLength": 128 },
+        "actorEmail": { "type": "string", "maxLength": 120 },
+        "action": { "type": "string", "maxLength": 100 },
+        "targetType": { "type": "string", "maxLength": 60 },
+        "summary": { "type": "string", "maxLength": 240 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["tenantId", "actorUid", "action", "targetType", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/tenants/{tenantId}": {
+      "schema": "Tenant",
+      "description": "Multi-tenant SaaS workshop workspace metadata and subscription tier."
+    },
+    "/tenants/{tenantId}/members/{memberUid}": {
+      "schema": "TenantMember",
+      "description": "Tenant RBAC member roster."
+    },
+    "/tenants/{tenantId}/customers/{customerId}": {
+      "schema": "Customer",
+      "description": "Tenant-scoped customers and fleet accounts."
+    },
+    "/tenants/{tenantId}/vehicles/{vehicleId}": {
+      "schema": "Vehicle",
+      "description": "Tenant-scoped vehicles indexed by VIN and RTO plate."
+    },
+    "/tenants/{tenantId}/jobCards/{jobCardId}": {
+      "schema": "JobCard",
+      "description": "Tenant-scoped repair orders and GST estimates."
+    },
+    "/tenants/{tenantId}/partsInventory/{partId}": {
+      "schema": "PartItem",
+      "description": "Tenant-scoped spare parts stock and pricing."
+    },
+    "/tenants/{tenantId}/appointments/{appointmentId}": {
+      "schema": "Appointment",
+      "description": "Tenant-scoped vehicle drop-off appointments."
+    },
+    "/tenants/{tenantId}/auditLogs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Append-only tenant security and operational audit events."
+    }
+  }
+}

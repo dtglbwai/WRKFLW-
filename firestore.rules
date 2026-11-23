@@ -1,0 +1,237 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Default-Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Hardened Primitive Helpers
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isPlatformOwner() {
+      return isSignedIn() && request.auth.token.email == 'dtglbw@gmail.com';
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isTenantMember(tenantId) {
+      return isSignedIn() && (
+        isPlatformOwner() ||
+        exists(/databases/$(database)/documents/tenants/$(tenantId)/members/$(request.auth.uid))
+      );
+    }
+
+    function memberRole(tenantId) {
+      return get(/databases/$(database)/documents/tenants/$(tenantId)/members/$(request.auth.uid)).data.role;
+    }
+
+    function isTenantAdmin(tenantId) {
+      return isPlatformOwner() || (
+        isTenantMember(tenantId) &&
+        memberRole(tenantId) in ['Platform Owner', 'Workshop Admin']
+      );
+    }
+
+    function canManageOperations(tenantId) {
+      return isPlatformOwner() || (
+        isTenantMember(tenantId) &&
+        memberRole(tenantId) in ['Platform Owner', 'Workshop Admin', 'Service Advisor', 'Master Technician']
+      );
+    }
+
+    function canManageBilling(tenantId) {
+      return isPlatformOwner() || (
+        isTenantMember(tenantId) &&
+        memberRole(tenantId) in ['Platform Owner', 'Workshop Admin', 'Billing Accountant']
+      );
+    }
+
+    function canManageInventory(tenantId) {
+      return isPlatformOwner() || (
+        isTenantMember(tenantId) &&
+        memberRole(tenantId) in ['Platform Owner', 'Workshop Admin', 'Inventory Manager', 'Service Advisor']
+      );
+    }
+
+    // 3. Validation Blueprints
+    function isValidTenant(data) {
+      return data.keys().hasAll(['name', 'city', 'planId', 'ownerUid', 'ownerEmail', 'ownershipCode', 'createdAt']) &&
+             data.keys().hasOnly(['name', 'city', 'gstin', 'planId', 'ownerUid', 'ownerEmail', 'ownershipCode', 'createdAt', 'updatedAt']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+             data.city is string && data.city.size() > 0 && data.city.size() <= 80 &&
+             (!('gstin' in data) || (data.gstin is string && data.gstin.size() <= 20)) &&
+             data.planId in ['starter', 'pro', 'enterprise'] &&
+             data.ownerUid is string && data.ownerUid.size() <= 128 &&
+             data.ownerEmail is string && data.ownerEmail.size() <= 120 &&
+             data.ownershipCode == 'SGSR14061977820DLVR';
+    }
+
+    function isValidMember(data) {
+      return data.keys().hasAll(['uid', 'email', 'role', 'status', 'assignedAt']) &&
+             data.keys().hasOnly(['uid', 'email', 'displayName', 'role', 'status', 'assignedAt']) &&
+             data.uid is string && data.uid.size() <= 128 &&
+             data.email is string && data.email.size() <= 120 &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
+             data.role in ['Platform Owner', 'Workshop Admin', 'Service Advisor', 'Master Technician', 'Inventory Manager', 'Billing Accountant'] &&
+             data.status in ['Active', 'Suspended'] &&
+             data.assignedAt is string && data.assignedAt.size() <= 40;
+    }
+
+    function isValidCustomer(data, tenantId) {
+      return data.keys().hasAll(['tenantId', 'name', 'phone', 'email', 'customerType']) &&
+             data.keys().hasOnly(['tenantId', 'id', 'name', 'phone', 'email', 'address', 'customerType', 'companyName', 'createdAt']) &&
+             data.tenantId == tenantId &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 120 &&
+             data.phone is string && data.phone.size() <= 30 &&
+             data.email is string && data.email.size() <= 120 &&
+             (!('address' in data) || (data.address is string && data.address.size() <= 240)) &&
+             data.customerType in ['Individual', 'Fleet'];
+    }
+
+    function isValidVehicle(data, tenantId) {
+      return data.keys().hasAll(['tenantId', 'customerId', 'plateNumber', 'make', 'model', 'year']) &&
+             data.keys().hasOnly(['tenantId', 'id', 'customerId', 'plateNumber', 'vin', 'make', 'model', 'year', 'fuelType', 'color', 'odometerKm', 'lastServiceDate']) &&
+             data.tenantId == tenantId &&
+             data.customerId is string && data.customerId.size() <= 128 &&
+             data.plateNumber is string && data.plateNumber.size() > 0 && data.plateNumber.size() <= 24 &&
+             data.make is string && data.make.size() > 0 && data.make.size() <= 60 &&
+             data.model is string && data.model.size() > 0 && data.model.size() <= 80 &&
+             data.year is number && data.year >= 1980 && data.year <= 2035;
+    }
+
+    function isValidJobCard(data, tenantId) {
+      return data.keys().hasAll(['tenantId', 'jobNumber', 'vehicleId', 'customerId', 'status']) &&
+             data.tenantId == tenantId &&
+             data.jobNumber is string && data.jobNumber.size() > 0 && data.jobNumber.size() <= 32 &&
+             data.vehicleId is string && data.vehicleId.size() <= 128 &&
+             data.customerId is string && data.customerId.size() <= 128 &&
+             data.status in ['Intake', 'Diagnostics', 'Awaiting Parts', 'In Repair', 'Quality Check', 'Ready for Pickup', 'Invoiced'] &&
+             (!('priority' in data) || data.priority in ['Standard', 'Priority', 'Urgent']) &&
+             (!('paymentStatus' in data) || data.paymentStatus in ['Estimate', 'Unpaid', 'Partial', 'Paid']) &&
+             (!('paidAmount' in data) || (data.paidAmount is number && data.paidAmount >= 0));
+    }
+
+    function isValidPart(data, tenantId) {
+      return data.keys().hasAll(['tenantId', 'sku', 'name', 'quantity', 'sellingPrice']) &&
+             data.tenantId == tenantId &&
+             data.sku is string && data.sku.size() > 0 && data.sku.size() <= 40 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 140 &&
+             data.quantity is number && data.quantity >= 0 &&
+             data.sellingPrice is number && data.sellingPrice >= 0;
+    }
+
+    function isValidAppointment(data, tenantId) {
+      return data.keys().hasAll(['tenantId', 'appointmentNumber', 'customerName', 'plateNumber', 'scheduledDate', 'status']) &&
+             data.tenantId == tenantId &&
+             data.appointmentNumber is string && data.appointmentNumber.size() <= 32 &&
+             data.customerName is string && data.customerName.size() <= 120 &&
+             data.plateNumber is string && data.plateNumber.size() <= 24 &&
+             data.scheduledDate is string && data.scheduledDate.size() <= 32 &&
+             data.status in ['Scheduled', 'Checked In', 'Completed', 'Cancelled'];
+    }
+
+    function isValidAuditLog(data, tenantId) {
+      return data.keys().hasAll(['tenantId', 'actorUid', 'action', 'targetType', 'createdAt']) &&
+             data.keys().hasOnly(['tenantId', 'actorUid', 'actorEmail', 'action', 'targetType', 'summary', 'createdAt']) &&
+             data.tenantId == tenantId &&
+             data.actorUid == request.auth.uid &&
+             data.action is string && data.action.size() <= 100 &&
+             data.targetType is string && data.targetType.size() <= 60 &&
+             (!('summary' in data) || (data.summary is string && data.summary.size() <= 240)) &&
+             data.createdAt is string && data.createdAt.size() <= 40;
+    }
+
+    // 4. Connection Health Probe
+    match /test/connection {
+      allow get: if true;
+    }
+
+    // 5. Multi-Tenant SaaS Root & Isolated Subcollections
+    match /tenants/{tenantId} {
+      allow get: if isValidId(tenantId) && (isPlatformOwner() || isTenantMember(tenantId) || resource.data.ownerUid == request.auth.uid);
+      allow list: if isSignedIn() && (isPlatformOwner() || resource.data.ownerUid == request.auth.uid);
+      allow create: if isValidId(tenantId) && isSignedIn() && isValidTenant(incoming()) && incoming().ownerUid == request.auth.uid;
+      allow update: if isValidId(tenantId) && isTenantAdmin(tenantId) && isValidTenant(incoming()) &&
+                       incoming().ownerUid == existing().ownerUid &&
+                       incoming().ownershipCode == existing().ownershipCode &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['name', 'city', 'gstin', 'planId', 'updatedAt']);
+      allow delete: if isValidId(tenantId) && isPlatformOwner();
+
+      match /members/{memberUid} {
+        allow get: if isValidId(memberUid) && isTenantMember(tenantId);
+        allow list: if isTenantAdmin(tenantId);
+        allow create: if isValidId(memberUid) && isValidMember(incoming()) && (
+          isTenantAdmin(tenantId) ||
+          (isSignedIn() && memberUid == request.auth.uid && get(/databases/$(database)/documents/tenants/$(tenantId)).data.ownerUid == request.auth.uid)
+        );
+        allow update: if isValidId(memberUid) && isTenantAdmin(tenantId) && isValidMember(incoming()) &&
+                         incoming().uid == existing().uid &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['role', 'status', 'displayName']);
+        allow delete: if isValidId(memberUid) && isTenantAdmin(tenantId) && memberUid != request.auth.uid;
+      }
+
+      match /customers/{customerId} {
+        allow get, list: if isTenantMember(tenantId) && resource.data.tenantId == tenantId;
+        allow create: if isValidId(customerId) && canManageOperations(tenantId) && isValidCustomer(incoming(), tenantId);
+        allow update: if isValidId(customerId) && canManageOperations(tenantId) && isValidCustomer(incoming(), tenantId) &&
+                         incoming().tenantId == existing().tenantId;
+        allow delete: if isValidId(customerId) && isTenantAdmin(tenantId);
+      }
+
+      match /vehicles/{vehicleId} {
+        allow get, list: if isTenantMember(tenantId) && resource.data.tenantId == tenantId;
+        allow create: if isValidId(vehicleId) && canManageOperations(tenantId) && isValidVehicle(incoming(), tenantId);
+        allow update: if isValidId(vehicleId) && canManageOperations(tenantId) && isValidVehicle(incoming(), tenantId) &&
+                         incoming().tenantId == existing().tenantId;
+        allow delete: if isValidId(vehicleId) && isTenantAdmin(tenantId);
+      }
+
+      match /jobCards/{jobCardId} {
+        allow get, list: if isTenantMember(tenantId) && resource.data.tenantId == tenantId;
+        allow create: if isValidId(jobCardId) && canManageOperations(tenantId) && isValidJobCard(incoming(), tenantId);
+        allow update: if isValidId(jobCardId) && isValidJobCard(incoming(), tenantId) &&
+                         incoming().tenantId == existing().tenantId &&
+                         incoming().jobNumber == existing().jobNumber && (
+                           isTenantAdmin(tenantId) ||
+                           (canManageBilling(tenantId) && incoming().diff(existing()).affectedKeys().hasOnly(['paidAmount', 'paymentStatus', 'paymentMethod', 'status'])) ||
+                           (canManageOperations(tenantId) && existing().paymentStatus != 'Paid')
+                         );
+        allow delete: if isValidId(jobCardId) && isTenantAdmin(tenantId);
+      }
+
+      match /partsInventory/{partId} {
+        allow get, list: if isTenantMember(tenantId) && resource.data.tenantId == tenantId;
+        allow create: if isValidId(partId) && canManageInventory(tenantId) && isValidPart(incoming(), tenantId);
+        allow update: if isValidId(partId) && canManageInventory(tenantId) && isValidPart(incoming(), tenantId) &&
+                         incoming().tenantId == existing().tenantId;
+        allow delete: if isValidId(partId) && isTenantAdmin(tenantId);
+      }
+
+      match /appointments/{appointmentId} {
+        allow get, list: if isTenantMember(tenantId) && resource.data.tenantId == tenantId;
+        allow create, update: if isValidId(appointmentId) && canManageOperations(tenantId) && isValidAppointment(incoming(), tenantId);
+        allow delete: if isValidId(appointmentId) && isTenantAdmin(tenantId);
+      }
+
+      match /auditLogs/{logId} {
+        allow get, list: if isTenantAdmin(tenantId) && resource.data.tenantId == tenantId;
+        allow create: if isValidId(logId) && isTenantMember(tenantId) && isValidAuditLog(incoming(), tenantId);
+        allow update, delete: if false;
+      }
+    }
+  }
+}

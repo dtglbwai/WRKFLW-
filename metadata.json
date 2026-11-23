@@ -1,0 +1,6 @@
+{
+  "name": "TorqueBay Garage & Workshop Management System",
+  "description": "Automotive garage and workshop management system with job cards, service bay scheduling, vehicle service history, parts inventory, technician roster, invoicing, and live GitHub public repository fetching.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
